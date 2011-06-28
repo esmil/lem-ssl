@@ -1,0 +1,5 @@
+liblem-ssl (0.1-1) unstable; urgency=low
+
+  * Built directly from git source
+
+ -- Emil Renner Berthing <esmil@mailme.dk>  Tue, 28 Jun 2011 16:13:57 +0200

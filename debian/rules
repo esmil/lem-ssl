@@ -1,0 +1,35 @@
+#!/bin/bash
+
+prefix='/usr'
+
+startdir="$(pwd)"
+pkgdir="$startdir/pkg"
+
+set -e
+
+case "$1" in
+clean)
+  make clean
+  ;;
+
+build)
+  make NDEBUG=1
+  ;;
+
+binary)
+  mkdir -p "$pkgdir/DEBIAN"
+  dpkg-gencontrol "-P$pkgdir"
+  pkgname="$(sed 's/_.*//' debian/files)"
+
+  make DESTDIR="$pkgdir/" PREFIX="$prefix" install
+
+  mkdir -p "$pkgdir$prefix/share/doc/$pkgname"
+  gzip -c debian/changelog > "$pkgdir$prefix/share/doc/$pkgname/changelog.gz"
+
+  for i in README.markdown LICENSE; do
+    install -m644 "$i" "$pkgdir$prefix/share/doc/$pkgname/"
+  done
+
+  dpkg-deb -b "$pkgdir" ..
+  ;;
+esac

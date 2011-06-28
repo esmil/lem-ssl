@@ -1,0 +1,12 @@
+Source: liblem-ssl
+Maintainer: Emil Renner Berthing <esmil@mailme.dk>
+Section: libraries
+Priority: optional
+Build-Depends: lem, libssl-dev
+Homepage: https://github.com/esmil/lem-ssl
+Standards-Version: 3.7.2
+
+Package: liblem-ssl
+Architecture: any
+Depends: lem, libssl0.9.8
+Description: Secure socket library for the Lua Event Machine
