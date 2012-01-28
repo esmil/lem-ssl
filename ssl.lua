@@ -1,4 +1,3 @@
-#!/usr/bin/env lem
 --
 -- This file is part of lem-ssl.
 -- Copyright 2011 Emil Renner Berthing
@@ -17,32 +16,11 @@
 -- along with lem-ssl.  If not, see <http://www.gnu.org/licenses/>.
 --
 
-local ssl = require 'lem.ssl'
+local streams = require 'lem.streams'
+local M       = require 'lem.ssl.core'
 
-local context = assert(ssl.newcontext())
-local iconn, oconn = assert(context:connect('encrypted.google.com:https'))
+M.IStream.read = streams.reader(M.IStream.readp)
 
-assert(getmetatable(iconn) == ssl.IStream, 'IStream metatable confusion')
-assert(getmetatable(oconn) == ssl.OStream, 'OStream metatable confusion')
-
-assert(oconn:write('GET / HTTP/1.1\r\nHost: encrypted.google.com\r\nConnection: close\r\n\r\n'))
-
---[[
-while true do
-	local line, err = iconn:read('*l')
-	if not line then
-		if err == 'closed' then
-			break
-		else
-			error(err)
-		end
-	end
-
-	print(line)
-end
---[=[
---]]
-print(assert(iconn:read('*a')))
---]=]
+return M
 
 -- vim: ts=2 sw=2 noet:

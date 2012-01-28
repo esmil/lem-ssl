@@ -16,10 +16,14 @@
  * along with lem-ssl.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+struct context {
+	SSL_CTX *ctx;
+};
+
 static int
 context_close(lua_State *T)
 {
-	struct lem_ssl_context *c;
+	struct context *c;
 
 	luaL_checktype(T, 1, LUA_TUSERDATA);
 	c = lua_touserdata(T, 1);
@@ -41,7 +45,7 @@ static int
 context_new(lua_State *T)
 {
 	SSL_CTX *ctx;
-	struct lem_ssl_context *c;
+	struct context *c;
 
 	ctx = SSL_CTX_new(SSLv23_method());
 	if (ctx == NULL) {
@@ -52,7 +56,7 @@ context_new(lua_State *T)
 	}
 
 	/* create userdata and set the metatable */
-	c = lua_newuserdata(T, sizeof(struct lem_ssl_context));
+	c = lua_newuserdata(T, sizeof(struct context));
 	lua_pushvalue(T, lua_upvalueindex(1));
 	lua_setmetatable(T, -2);
 
@@ -62,34 +66,94 @@ context_new(lua_State *T)
 }
 
 static void
-connect_handler(EV_P_ struct ev_io *w, int revents)
+context_connect_handler(EV_P_ ev_io *w, int revents)
 {
-	struct lem_ssl_stream *s = (struct lem_ssl_stream *)w;
+	struct istream *s = (struct istream *)w;
+	lua_State *T = s->w.data;
 	int ret;
+	const char *msg;
 
 	(void)revents;
 
-	ret = stream_check_error(s->T, s, SSL_connect(s->ssl),
-	                         "error establishing SSL connection: %s");
-	if (ret == 0)
+	ret = SSL_connect(s->ssl);
+	switch (SSL_get_error(s->ssl, ret)) {
+	case SSL_ERROR_NONE:
+		lem_debug("SSL_ERROR_NONE");
+		ev_io_stop(EV_A_ &s->w);
+		s->w.data = NULL;
+		lem_queue(T, 2);
 		return;
 
-	stream_io_unregister(s);
-	lem_queue(s->T, ret);
-	s->T = NULL;
+	case SSL_ERROR_ZERO_RETURN:
+		lem_debug("SSL_ERROR_ZERO_RETURN");
+		msg = "connection closed unexpectedly";
+		break;
+
+	case SSL_ERROR_WANT_READ:
+		lem_debug("SSL_ERROR_WANT_READ");
+		if (s->w.events != EV_READ) {
+			ev_io_stop(EV_A_ &s->w);
+			s->w.events = EV_READ;
+			ev_io_start(EV_A_ &s->w);
+		}
+		return;
+
+	case SSL_ERROR_WANT_WRITE:
+		lem_debug("SSL_ERROR_WANT_WRITE");
+	case SSL_ERROR_WANT_CONNECT:
+		lem_debug("SSL_ERROR_WANT_CONNECT");
+		if (s->w.events != EV_WRITE) {
+			ev_io_stop(EV_A_ &s->w);
+			s->w.events = EV_WRITE;
+			ev_io_start(EV_A_ &s->w);
+		}
+		return;
+
+	case SSL_ERROR_SYSCALL:
+		lem_debug("SSL_ERROR_SYSCALL");
+		{
+			long e = ERR_get_error();
+
+			if (e)
+				msg = ERR_reason_error_string(e);
+			else if (ret == 0)
+				msg = "connection closed unexpectedly";
+			else
+				msg = strerror(errno);
+
+		}
+		break;
+
+	case SSL_ERROR_SSL:
+		lem_debug("SSL_ERROR_SSL");
+		msg = ERR_reason_error_string(ERR_get_error());
+		break;
+
+	default:
+		lem_debug("SSL_ERROR_* (default)");
+		msg = "unexpected error from SSL library";
+	}
+
+	ev_io_stop(EV_A_ &s->w);
+	s->w.data = NULL;
+
+	lua_pushnil(T);
+	lua_pushstring(T, msg);
+	lem_queue(T, 2);
 }
 
 static int
 context_connect(lua_State *T)
 {
-	struct lem_ssl_context *c;
+	struct context *c;
 	const char *hostname;
 	int port;
 	BIO *bio;
 	SSL *ssl;
 	int ret;
 	const char *msg;
-	struct lem_ssl_stream *s;
+	struct istream *is;
+	struct ostream *os;
 
 	luaL_checktype(T, 1, LUA_TUSERDATA);
 	c = lua_touserdata(T, 1);
@@ -117,18 +181,22 @@ context_connect(lua_State *T)
 	ssl = SSL_new(c->ctx);
 	if (ssl == NULL) {
 		lua_pushnil(T);
-		lua_pushfstring(T, "error creating SSL connection: %s",
-		                ERR_reason_error_string(ERR_get_error()));
+		lua_pushfstring(T, ERR_reason_error_string(ERR_get_error()));
 		return 2;
 	}
 	SSL_set_bio(ssl, bio, bio);
 
 	ret = SSL_connect(ssl);
+
+	is = istream_new(T, ssl, lua_upvalueindex(1));
+	os = ostream_new(T, ssl, lua_upvalueindex(2));
+	is->twin = os;
+	os->twin = is;
+
 	switch (SSL_get_error(ssl, ret)) {
 	case SSL_ERROR_NONE:
 		lem_debug("SSL_ERROR_NONE");
-		s = stream_new(T, ssl, NULL, 0);
-		return 1;
+		return 2;
 
 	case SSL_ERROR_ZERO_RETURN:
 		lem_debug("SSL_ERROR_ZERO_RETURN");
@@ -137,21 +205,21 @@ context_connect(lua_State *T)
 
 	case SSL_ERROR_WANT_READ:
 		lem_debug("SSL_ERROR_WANT_READ");
-		lua_settop(T, 0);
-		s = stream_new(T, ssl, connect_handler, EV_READ);
-		s->T = T;
-		ev_io_start(EV_G_ &s->w);
-		return lua_yield(T, 1);
+		is->w.data = T;
+		is->w.events = EV_READ;
+		is->w.cb = context_connect_handler;
+		ev_io_start(EV_G_ &is->w);
+		return lua_yield(T, 2);
 
 	case SSL_ERROR_WANT_WRITE:
 		lem_debug("SSL_ERROR_WANT_WRITE");
 	case SSL_ERROR_WANT_CONNECT:
 		lem_debug("SSL_ERROR_WANT_CONNECT");
-		lua_settop(T, 0);
-		s = stream_new(T, ssl, connect_handler, EV_WRITE);
-		s->T = T;
-		ev_io_start(EV_G_ &s->w);
-		return lua_yield(T, 1);
+		is->w.data = T;
+		is->w.events = EV_WRITE;
+		is->w.cb = context_connect_handler;
+		ev_io_start(EV_G_ &is->w);
+		return lua_yield(T, 2);
 
 	case SSL_ERROR_SYSCALL:
 		lem_debug("SSL_ERROR_SYSCALL");
@@ -178,10 +246,9 @@ context_connect(lua_State *T)
 		msg = "unexpected error from SSL library";
 	}
 
+	lua_settop(T, 0);
 	lua_pushnil(T);
-	lua_pushfstring(T, "error establishing SSL connection: %s", msg);
+	lua_pushstring(T, msg);
 	SSL_free(ssl);
 	return 2;
 }
-
-

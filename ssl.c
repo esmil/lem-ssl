@@ -21,29 +21,28 @@
 #include <string.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-
-#include "ssl.h"
+#include <lem/streams.h>
 
 #include "stream.c"
 #include "context.c"
 
 int
-luaopen_lem_ssl(lua_State *L)
+luaopen_lem_ssl_core(lua_State *L)
 {
 	/* initialize ssl library */
 	SSL_library_init();
 	SSL_load_error_strings();
 
 	/* create module table */
-	lua_newtable(L);
+	lua_createtable(L, 0, 4);
 
-	/* create metatable for stream objects */
-	lua_newtable(L);
+	/* create metatable for IStream objects */
+	lua_createtable(L, 0, 8);
 	/* mt.__index = mt */
 	lua_pushvalue(L, -1);
 	lua_setfield(L, -2, "__index");
-	/* mt.__gc = <stream_gc> */
-	lua_pushcfunction(L, stream_gc);
+	/* mt.__gc = <istream_gc> */
+	lua_pushcfunction(L, istream_gc);
 	lua_setfield(L, -2, "__gc");
 	/* mt.closed = <stream_closed> */
 	lua_pushcfunction(L, stream_closed);
@@ -51,23 +50,46 @@ luaopen_lem_ssl(lua_State *L)
 	/* mt.busy = <stream_busy> */
 	lua_pushcfunction(L, stream_busy);
 	lua_setfield(L, -2, "busy");
-	/* mt.close = <stream_close> */
-	lua_pushcfunction(L, stream_close);
-	lua_setfield(L, -2, "close");
-	/* mt.read = <stream_read> */
-	lua_pushcfunction(L, stream_read);
-	lua_setfield(L, -2, "read");
-	/* mt.write = <stream_write> */
-	lua_pushcfunction(L, stream_write);
-	lua_setfield(L, -2, "write");
 	/* mt.interrupt = <stream_interrupt> */
 	lua_pushcfunction(L, stream_interrupt);
 	lua_setfield(L, -2, "interrupt");
+	/* mt.close = <istream_close> */
+	lua_pushcfunction(L, istream_close);
+	lua_setfield(L, -2, "close");
+	/* mt.readp = <stream_readp> */
+	lua_pushcfunction(L, stream_readp);
+	lua_setfield(L, -2, "readp");
 	/* insert table */
-	lua_setfield(L, -2, "Stream");
+	lua_setfield(L, -2, "IStream");
+
+	/* create metatable for OStream objects */
+	lua_createtable(L, 0, 7);
+	/* mt.__index = mt */
+	lua_pushvalue(L, -1);
+	lua_setfield(L, -2, "__index");
+	/* mt.__gc = <ostream_gc> */
+	lua_pushcfunction(L, ostream_gc);
+	lua_setfield(L, -2, "__gc");
+	/* mt.closed = <stream_closed> */
+	lua_pushcfunction(L, stream_closed);
+	lua_setfield(L, -2, "closed");
+	/* mt.busy = <stream_busy> */
+	lua_pushcfunction(L, stream_busy);
+	lua_setfield(L, -2, "busy");
+	/* mt.interrupt = <stream_interrupt> */
+	lua_pushcfunction(L, stream_interrupt);
+	lua_setfield(L, -2, "interrupt");
+	/* mt.close = <ostream_close> */
+	lua_pushcfunction(L, ostream_close);
+	lua_setfield(L, -2, "close");
+	/* mt.write = <stream_write> */
+	lua_pushcfunction(L, stream_write);
+	lua_setfield(L, -2, "write");
+	/* insert table */
+	lua_setfield(L, -2, "OStream");
 
 	/* create metatable for context objects */
-	lua_newtable(L);
+	lua_createtable(L, 0, 3);
 	/* mt.__index = mt */
 	lua_pushvalue(L, -1);
 	lua_setfield(L, -2, "__index");
@@ -75,8 +97,9 @@ luaopen_lem_ssl(lua_State *L)
 	lua_pushcfunction(L, context_close);
 	lua_setfield(L, -2, "__gc");
 	/* mt.connect = <context_connect> */
-	lua_getfield(L, -2, "Stream"); /* upvalue 1 = Stream */
-	lua_pushcclosure(L, context_connect, 1);
+	lua_getfield(L, -2, "IStream"); /* upvalue 1 = IStream */
+	lua_getfield(L, -3, "OStream"); /* upvalue 2 = OStream */
+	lua_pushcclosure(L, context_connect, 2);
 	lua_setfield(L, -2, "connect");
 	/* insert table */
 	lua_setfield(L, -2, "Context");
