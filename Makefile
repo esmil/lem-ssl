@@ -1,29 +1,24 @@
-CC         = gcc
-CFLAGS    ?= -O2 -pipe -Wall -Wextra -Wno-variadic-macros
-CFLAGS    += -std=c99
-PKGCONFIG  = pkg-config
+CC         = gcc -std=gnu99
+CFLAGS    ?= -O2 -pipe -Wall -Wextra
+PKG_CONFIG = pkg-config
 STRIP      = strip
 INSTALL    = install
 UNAME      = uname
 
 OS         = $(shell $(UNAME))
-CFLAGS    += $(shell $(PKGCONFIG) --cflags lem)
-LUA_PATH   = $(shell $(PKGCONFIG) --variable=path lem)
-LUA_CPATH  = $(shell $(PKGCONFIG) --variable=cpath lem)
+CFLAGS    += $(shell $(PKG_CONFIG) --cflags lem)
+lmoddir    = $(shell $(PKG_CONFIG) --variable=INSTALL_LMOD lem)
+cmoddir    = $(shell $(PKG_CONFIG) --variable=INSTALL_CMOD lem)
 
 ifeq ($(OS),Darwin)
 SHARED     = -dynamiclib -Wl,-undefined,dynamic_lookup
-STRIP_ARGS = -x
+STRIP     += -x
 else
 SHARED     = -shared
 endif
 
-clibs = core.so
-libs  = ssl.lua
-
-ifdef NDEBUG
-CFLAGS += -DNDEBUG
-endif
+llibs = lem/ssl.lua
+clibs = lem/ssl/core.so
 
 ifdef V
 E=@\#
@@ -33,42 +28,32 @@ E=@echo
 Q=@
 endif
 
-.PHONY: all strip install clean
-.PRECIOUS: %.o
+.PHONY: all debug strip install clean
 
+all: CFLAGS += -DNDEBUG
 all: $(clibs)
 
-%.o: %.c
-	$E '  CC $@'
-	$Q$(CC) $(CFLAGS) -fPIC -nostartfiles -c $< -o $@
+debug: $(clibs)
 
-core.so: ssl.c stream.c context.c
-	$E '  CCLD $@'
-	$Q$(CC) $(CFLAGS) -fPIC -nostartfiles $(SHARED) $< -o $@ $(LDFLAGS) -lssl
+lem/ssl/core.so: LIBS += -lssl
+lem/ssl/core.so: lem/ssl/core.c lem/ssl/stream.c lem/ssl/context.c
+	$E '  CCLD  $@'
+	$Q$(CC) $(CFLAGS) -fPIC -nostartfiles $(SHARED) $< -o $@ $(LDFLAGS) $(LIBS)
 
 %-strip: %
 	$E '  STRIP $<'
-	$Q$(STRIP) $(STRIP_ARGS) $<
+	$Q$(STRIP) $<
 
 strip: $(clibs:%=%-strip)
 
-path-install:
-	$E '  INSTALL -d $(LUA_PATH)/lem'
-	$Q$(INSTALL) -d $(DESTDIR)$(LUA_PATH)/lem
+$(DESTDIR)$(lmoddir)/% $(DESTDIR)$(cmoddir)/%: %
+	$E '  INSTALL $@'
+	$Q$(INSTALL) -d $(dir $@)
+	$Q$(INSTALL) -m 644 $< $@
 
-%.lua-install: %.lua path-install
-	$E '  INSTALL $<'
-	$Q$(INSTALL) -m644 $< $(DESTDIR)$(LUA_PATH)/lem/$<
-
-cpath-install:
-	$E '  INSTALL -d $(LUA_CPATH)/lem/ssl'
-	$Q$(INSTALL) -d $(DESTDIR)$(LUA_CPATH)/lem/ssl
-
-%.so-install: %.so cpath-install
-	$E '  INSTALL $<'
-	$Q$(INSTALL) $< $(DESTDIR)$(LUA_CPATH)/lem/ssl/$<
-
-install: $(clibs:%=%-install) $(libs:%=%-install)
+install: \
+	$(llibs:%=$(DESTDIR)$(lmoddir)/%) \
+	$(clibs:%=$(DESTDIR)$(cmoddir)/%)
 
 clean:
-	rm -f $(clibs) *.o *.c~ *.h~
+	rm -f $(clibs)

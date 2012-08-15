@@ -9,7 +9,7 @@ local context = assert(ssl.newcontext())
 local format = string.format
 local concat = table.concat
 
-local ticker = utils.sleeper()
+local done = false
 
 utils.spawn(function()
 	local istream, ostream = assert(context:connect('encrypted.google.com:https'))
@@ -30,12 +30,13 @@ utils.spawn(function()
 		print(format('\n#body = %d', #assert(res:body())))
 	end
 
-	ticker:wakeup(true)
+	done = true
 end)
 
-local write = io.write
+local write, sleeper = io.write, utils.sleeper()
 repeat
 	write('.')
-until ticker:sleep(0.001)
+	sleeper:sleep(0.001)
+until done
 
 -- vim: set ts=2 sw=2 noet:

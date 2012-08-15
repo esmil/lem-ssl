@@ -72,7 +72,7 @@ stream_interrupt(lua_State *T)
 	}
 
 	lem_debug("interrupting io action");
-	ev_io_stop(EV_G_ w);
+	ev_io_stop(LEM_ w);
 	w->data = NULL;
 
 	lua_settop(S, 0);
@@ -147,7 +147,7 @@ istream_close(lua_State *T)
 		lua_State *S = s->w.data;
 
 		lem_debug("interrupting io action");
-		ev_io_stop(EV_G_ &s->w);
+		ev_io_stop(LEM_ &s->w);
 		s->w.data = NULL;
 
 		lua_settop(S, 0);
@@ -369,7 +369,7 @@ yield:
 	s->p = p;
 	s->w.data = T;
 	s->w.cb = stream_readp_handler;
-	ev_io_start(EV_G_ &s->w);
+	ev_io_start(LEM_ &s->w);
 	return lua_yield(T, lua_gettop(T));
 }
 
@@ -435,7 +435,7 @@ ostream_close(lua_State *T)
 		lua_State *S = s->w.data;
 
 		lem_debug("interrupting io action");
-		ev_io_stop(EV_G_ &s->w);
+		ev_io_stop(LEM_ &s->w);
 		s->w.data = NULL;
 
 		lua_settop(S, 0);
@@ -588,7 +588,7 @@ again:
 		lem_debug("SSL_ERROR_WANT_READ");
 		s->w.events = EV_READ;
 		s->w.cb = stream_write_handler;
-		ev_io_start(EV_G_ &s->w);
+		ev_io_start(LEM_ &s->w);
 		lua_settop(T, 1);
 		return lua_yield(T, 1);
 
@@ -596,7 +596,7 @@ again:
 		lem_debug("SSL_ERROR_WANT_WRITE");
 		s->w.events = EV_WRITE;
 		s->w.cb = stream_write_handler;
-		ev_io_start(EV_G_ &s->w);
+		ev_io_start(LEM_ &s->w);
 		lua_settop(T, 1);
 		return lua_yield(T, 1);
 

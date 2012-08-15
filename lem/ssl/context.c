@@ -208,7 +208,7 @@ context_connect(lua_State *T)
 		is->w.data = T;
 		is->w.events = EV_READ;
 		is->w.cb = context_connect_handler;
-		ev_io_start(EV_G_ &is->w);
+		ev_io_start(LEM_ &is->w);
 		return lua_yield(T, 2);
 
 	case SSL_ERROR_WANT_WRITE:
@@ -218,7 +218,7 @@ context_connect(lua_State *T)
 		is->w.data = T;
 		is->w.events = EV_WRITE;
 		is->w.cb = context_connect_handler;
-		ev_io_start(EV_G_ &is->w);
+		ev_io_start(LEM_ &is->w);
 		return lua_yield(T, 2);
 
 	case SSL_ERROR_SYSCALL:
